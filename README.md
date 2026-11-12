@@ -1,6 +1,6 @@
 # govtech-demo
 
-API de demonstração de um portal municipal de **solicitação de alvará**: o cidadão preenche o pedido e anexa documentos, um analista avalia por critérios, um gestor homologa ou indefere, e o estabelecimento aprovado entra no mapa da cidade.
+Demonstração de um portal municipal de **solicitação de alvará**, com API em Spring Boot e front-end em Next.js: o cidadão preenche o pedido e anexa documentos, um analista avalia por critérios, um gestor homologa ou indefere, e o estabelecimento aprovado entra no mapa da cidade.
 
 Todo o código foi escrito do zero para este repositório e **todos os dados são fictícios**. Ele não contém código, dados, configuração ou detalhes de infraestrutura de nenhum sistema real.
 
@@ -10,8 +10,28 @@ Todo o código foi escrito do zero para este repositório e **todos os dados sã
 - Fluxo de negócio com estados e regras testáveis: rascunho com autosave, envio de documentos, análise por critérios, homologação e cadastro no mapa.
 - Banco versionado com **Flyway**, **PostgreSQL** via Docker Compose, documentação **OpenAPI/Swagger**.
 - Testes automatizados que sobem um PostgreSQL de verdade (Testcontainers) e **CI** no GitHub Actions.
+- Front-end em **Next.js** que consome a API com sessão e CSRF: formulários validados com **Zod**, autosave do rascunho, upload de documentos e mapa com **Leaflet**.
 
-Stack: Java 17, Spring Boot 4, Spring Security, Spring Data JPA, PostgreSQL 17, Flyway, springdoc-openapi, JUnit 5 e Testcontainers.
+Stack do back-end: Java 17, Spring Boot 4, Spring Security, Spring Data JPA, PostgreSQL 17, Flyway, springdoc-openapi, JUnit 5 e Testcontainers.
+Stack do front-end: Next.js 16, TypeScript, Tailwind CSS, TanStack Query, React Hook Form, Zod e Leaflet.
+
+## Telas
+
+Cidadão: rascunho com autosave e anexos.
+
+![Rascunho do pedido com autosave e lista de documentos](docs/img/cidadao-rascunho.png)
+
+Analista: análise por critérios. Um critério não atendido exige observação.
+
+![Formulário de análise com um critério não atendido](docs/img/analista-analise.png)
+
+Gestor: decisão sobre o pedido analisado.
+
+![Pedido analisado com parecer favorável e botões de decisão](docs/img/gestor-decisao.png)
+
+Mapa público dos estabelecimentos homologados (pontos fictícios).
+
+![Mapa com três estabelecimentos homologados](docs/img/mapa.png)
 
 ## Fluxo do alvará
 
@@ -33,7 +53,7 @@ O parecer é favorável apenas se **todos** os critérios forem atendidos. Com p
 
 ```mermaid
 flowchart LR
-    C["Cliente (front-end, curl, Swagger)"] --> S["Spring Security<br/>sessão + CSRF + papéis"]
+    C["Next.js (proxy de /api), curl ou Swagger"] --> S["Spring Security<br/>sessão + CSRF + papéis"]
     S --> K["Controllers REST<br/>(validação, ProblemDetail)"]
     K --> V["AlvaraService<br/>(acesso e orquestração)"]
     V --> D["Entidade Alvara<br/>(regras do fluxo)"]
@@ -48,6 +68,8 @@ Organização dos pacotes (`demo.govtech`): `auth` (login e sessão), `usuario`,
 
 - **Sessão com cookie HttpOnly em vez de JWT no navegador.** O cookie não é legível por JavaScript, o que reduz o estrago de um XSS, e a sessão pode ser encerrada no servidor. O custo é precisar de CSRF, tratado abaixo.
 - **CSRF com cookie `XSRF-TOKEN`.** O front lê esse cookie e devolve o valor no cabeçalho `X-XSRF-TOKEN` em toda requisição que altera dados. O cookie de sessão usa `SameSite=Lax`, e `Secure` é ligado com `SESSION_COOKIE_SECURE=true` atrás de HTTPS.
+- **Front na mesma origem do navegador.** O Next encaminha `/api/*` para o Spring (`rewrites` em `frontend/next.config.ts`), então o cookie de sessão e o token CSRF funcionam sem CORS. O cliente HTTP (`frontend/lib/api.ts`) lê o cookie `XSRF-TOKEN` e envia o cabeçalho em toda requisição que altera dados.
+- **Validação nos dois lados.** O Zod dá resposta imediata nos formulários, mas a fonte da verdade é o servidor: o front exibe a mensagem do `ProblemDetail` quando o back-end recusa (por exemplo, enviar sem documento).
 - **Regras do fluxo dentro da entidade `Alvara`.** As transições de estado e as validações não dependem de Spring nem de banco e são cobertas por testes unitários rápidos.
 - **Recurso alheio responde 404, não 403.** Um cidadão não descobre se o alvará de outra pessoa existe.
 - **Separação de funções.** Quem analisa (analista) não é quem homologa (gestor), e o autocadastro só cria cidadãos.
@@ -70,6 +92,16 @@ No Windows, use `mvnw.cmd`. Se a porta 5432 já estiver ocupada, defina `POSTGRE
 
 - Documentação interativa: http://localhost:8080/swagger-ui.html
 - Mapa em GeoJSON (público): http://localhost:8080/api/unidades
+
+Front-end (Node 20.9 ou superior), em outro terminal, com a API rodando na porta 8080:
+
+```bash
+cd frontend
+npm install
+npm run dev                   # http://localhost:3000
+```
+
+Se a API estiver em outro endereço, defina `API_URL` antes de iniciar o front.
 
 O perfil `demo` cria três usuários fictícios, todos com a senha definida em `DEMO_SENHA`: `cidadao@exemplo.test`, `analista@exemplo.test` e `gestor@exemplo.test`.
 
@@ -94,7 +126,7 @@ O Swagger UI serve como documentação; para testar rotas que alteram dados, pre
 - `AlvaraTest`: regras do fluxo, sem Spring e sem banco.
 - `FluxoAlvaraTest`: fluxo completo (cidadão, analista, gestor e mapa), autorização, CSRF, upload inválido, cadastro e login, contra um PostgreSQL real em contêiner. Requer Docker.
 
-A cada push e pull request o GitHub Actions executa `./mvnw verify` (veja `.github/workflows/ci.yml`).
+A cada push e pull request o GitHub Actions executa `./mvnw verify` no back-end e `npm run lint` e `npm run build` no front-end (veja `.github/workflows/ci.yml`).
 
 ## Rotas
 
@@ -111,7 +143,8 @@ A cada push e pull request o GitHub Actions executa `./mvnw verify` (veja `.gith
 
 ## Limitações e próximos passos
 
-- Sem front-end: a API é a entrega. Um front em Next.js consumindo a API (TanStack Query, React Hook Form e Zod) é o passo natural.
+- O front-end não tem testes automatizados (o CI roda lint e build); a cobertura está no back-end. Um teste de ponta a ponta com Playwright é o passo natural.
+- A localização do estabelecimento é digitada como latitude e longitude. Um seletor de ponto no mapa seria melhor.
 - Documentos em `BYTEA` (ver decisões) e sem varredura de vírus.
 - Sem recuperação de senha, e-mail ou auditoria de quem fez cada transição.
 - Os critérios de análise são fixos e fictícios.
