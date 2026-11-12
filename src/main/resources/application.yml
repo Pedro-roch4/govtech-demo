@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: govtech-demo
+  config:
+    # Le o arquivo .env (copie de .env.example). Em producao use variaveis de ambiente.
+    import: optional:file:.env[.properties]
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:${POSTGRES_PORT:5432}/${POSTGRES_DB:govtech}}
+    username: ${POSTGRES_USER:}
+    password: ${POSTGRES_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+server:
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        same-site: lax
+        # defina SESSION_COOKIE_SECURE=true quando servir por HTTPS
+        secure: ${SESSION_COOKIE_SECURE:false}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+# Senha dos usuarios criados pelo perfil "demo" (obrigatoria nesse perfil).
+demo:
+  senha: ${DEMO_SENHA:}
